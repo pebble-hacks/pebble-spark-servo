@@ -44,24 +44,22 @@ static void click_config_provider(void *context) {
 
 
 // -----------------------------------------------------------------------------------------------
-static void timer_callback(void *data) {
-  AccelData accel = (AccelData) { .x = 0, .y = 0, .z = 0 };
+static void handle_new_position(AccelData *accel) {
 
-  accel_service_peek(&accel);
-  snprintf(g_text, sizeof(g_text), "%d %d %d", accel.x, accel.y, accel.z);
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "accel position: %d %d %d", accel.x, accel.y, accel.z);
+  snprintf(g_text, sizeof(g_text), "%d %d %d", accel->x, accel->y, accel->z);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "accel position: %d %d %d", accel->x, accel->y, accel->z);
 
   text_layer_set_text(g_text_layer, g_text);
   layer_mark_dirty(text_layer_get_layer(g_text_layer));
 
   // Update servo value
-  int servo_pos = (accel.y + 1000) * 180/2000;
+  int servo_pos = (accel->y + 1000) * 180/2000;
   if (servo_pos < 0) {
     servo_pos = 0;
   } else if (servo_pos > 180) {
     servo_pos = 180;
   }
-  if (abs(servo_pos - g_last_servo_pos) > 5) {
+  if (abs(servo_pos - g_last_servo_pos) > 0) {
     g_last_servo_pos = servo_pos;
     Tuplet value = TupletInteger(SERVO_KEY, servo_pos);
     DictionaryIterator *iter;
@@ -76,6 +74,15 @@ static void timer_callback(void *data) {
     }
   }
 
+}
+
+// -----------------------------------------------------------------------------------------------
+static void timer_callback(void *data) {
+  AccelData accel = (AccelData) { .x = 0, .y = 0, .z = 0 };
+
+  accel_service_peek(&accel);
+  handle_new_position(&accel);
+
   g_timer = app_timer_register(330 /* milliseconds */, timer_callback, NULL);
 }
 
@@ -88,7 +95,7 @@ static void sync_error_callback(DictionaryResult dict_error, AppMessageResult ap
 
 // -----------------------------------------------------------------------------------------------
 static void handle_accel(AccelData *accel_data, uint32_t num_samples) {
-  // do nothing
+  handle_new_position(accel_data);
 }
 
 
@@ -123,6 +130,7 @@ static void init(void) {
   window_stack_push(g_window, animated);
 
   accel_data_service_subscribe(0, handle_accel);
+  //accel_service_set_sampling_rate(10);
   g_timer = app_timer_register(100 /* milliseconds */, timer_callback, NULL);
 
   // Init app messages
