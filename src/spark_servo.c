@@ -1,14 +1,17 @@
 #include <pebble.h>
 
-static Window *window;
-static TextLayer *text_layer;
+// -----------------------------------------------------------------------------------------------
+// Globals
+static Window *g_window;
+static TextLayer *g_text_layer;
 static char g_text[100];
-static AppTimer *timer;
+static AppTimer *g_timer;
 
 static AppSync  gSync;
 static uint8_t  gSyncBuffer[64];
 
 
+// -----------------------------------------------------------------------------------------------
 // NOTE: The javascript code references these same constants through the strings
 //  defined in the "appKeys" section of appinfo.json
 enum InMessageKey {
@@ -16,18 +19,22 @@ enum InMessageKey {
 };
 
 
+// -----------------------------------------------------------------------------------------------
 static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
-  text_layer_set_text(text_layer, "Select");
+  text_layer_set_text(g_text_layer, "Select");
 }
 
+// -----------------------------------------------------------------------------------------------
 static void up_click_handler(ClickRecognizerRef recognizer, void *context) {
-  text_layer_set_text(text_layer, "Up");
+  text_layer_set_text(g_text_layer, "Up");
 }
 
+// -----------------------------------------------------------------------------------------------
 static void down_click_handler(ClickRecognizerRef recognizer, void *context) {
-  text_layer_set_text(text_layer, "Down");
+  text_layer_set_text(g_text_layer, "Down");
 }
 
+// -----------------------------------------------------------------------------------------------
 static void click_config_provider(void *context) {
   window_single_click_subscribe(BUTTON_ID_SELECT, select_click_handler);
   window_single_click_subscribe(BUTTON_ID_UP, up_click_handler);
@@ -35,6 +42,7 @@ static void click_config_provider(void *context) {
 }
 
 
+// -----------------------------------------------------------------------------------------------
 static void timer_callback(void *data) {
   AccelData accel = (AccelData) { .x = 0, .y = 0, .z = 0 };
 
@@ -42,8 +50,8 @@ static void timer_callback(void *data) {
   snprintf(g_text, sizeof(g_text), "%d %d %d", accel.x, accel.y, accel.z);
   APP_LOG(APP_LOG_LEVEL_DEBUG, "servo position: %d %d %d", accel.x, accel.y, accel.z);
 
-  text_layer_set_text(text_layer, g_text);
-  layer_mark_dirty(text_layer_get_layer(text_layer));
+  text_layer_set_text(g_text_layer, g_text);
+  layer_mark_dirty(text_layer_get_layer(g_text_layer));
 
   // Update servo value
   int servo_pos = (accel.y + 1000) * 180/2000;
@@ -64,53 +72,60 @@ static void timer_callback(void *data) {
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Could not write to outbox");
   }
 
-  timer = app_timer_register(330 /* milliseconds */, timer_callback, NULL);
+  g_timer = app_timer_register(330 /* milliseconds */, timer_callback, NULL);
 }
 
 
-/*****************************************************************************/
+// -----------------------------------------------------------------------------------------------
 static void sync_error_callback(DictionaryResult dict_error, AppMessageResult app_message_error, void *context) {
   APP_LOG(APP_LOG_LEVEL_DEBUG, "App Message Sync Error: %d", app_message_error);
 }
 
-static void sync_tuple_changed_callback(const uint32_t key, 
+
+// -----------------------------------------------------------------------------------------------
+static void sync_tuple_changed_callback(const uint32_t key,
         const Tuple* new_tuple, const Tuple* old_tuple, void* context) {
   APP_LOG(APP_LOG_LEVEL_DEBUG, "sync_tuple_changed");
 }
 
 
+// -----------------------------------------------------------------------------------------------
 static void handle_accel(AccelData *accel_data, uint32_t num_samples) {
   // do nothing
 }
 
 
+// -----------------------------------------------------------------------------------------------
 static void window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
 
-  text_layer = text_layer_create((GRect) { .origin = { 0, 72 }, .size = { bounds.size.w, 20 } });
-  text_layer_set_text(text_layer, "Press a button");
-  text_layer_set_text_alignment(text_layer, GTextAlignmentCenter);
-  layer_add_child(window_layer, text_layer_get_layer(text_layer));
+  g_text_layer = text_layer_create((GRect) { .origin = { 0, 72 }, .size = { bounds.size.w, 20 } });
+  text_layer_set_text(g_text_layer, "Press a button");
+  text_layer_set_text_alignment(g_text_layer, GTextAlignmentCenter);
+  layer_add_child(window_layer, text_layer_get_layer(g_text_layer));
 }
 
+
+// -----------------------------------------------------------------------------------------------
 static void window_unload(Window *window) {
-  text_layer_destroy(text_layer);
+  text_layer_destroy(g_text_layer);
 }
 
+
+// -----------------------------------------------------------------------------------------------
 static void init(void) {
-  window = window_create();
-  window_set_click_config_provider(window, click_config_provider);
-  window_set_window_handlers(window, (WindowHandlers) {
+  g_window = window_create();
+  window_set_click_config_provider(g_window, click_config_provider);
+  window_set_window_handlers(g_window, (WindowHandlers) {
     .load = window_load,
     .unload = window_unload,
   });
   const bool animated = true;
-  window_stack_push(window, animated);
+  window_stack_push(g_window, animated);
 
   accel_data_service_subscribe(0, handle_accel);
-  timer = app_timer_register(100 /* milliseconds */, timer_callback, NULL);
-
+  g_timer = app_timer_register(100 /* milliseconds */, timer_callback, NULL);
 
   // Init app messages
   const int inbound_size = 64;
@@ -127,15 +142,18 @@ static void init(void) {
 }
 
 
+// -----------------------------------------------------------------------------------------------
 static void deinit(void) {
   accel_data_service_unsubscribe();
-  window_destroy(window);
+  window_destroy(g_window);
 }
 
+
+// -----------------------------------------------------------------------------------------------
 int main(void) {
   init();
 
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "Done initializing, pushed window: %p", window);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "Done initializing, pushed window: %p", g_window);
 
   app_event_loop();
   deinit();
