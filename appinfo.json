@@ -1,0 +1,17 @@
+{
+  "uuid": "f3fddcf3-4f40-416d-8981-b74d034f509a",
+  "shortName": "spark_servo",
+  "longName": "spark_servo",
+  "companyName": "MakeAwesomeHappen",
+  "versionCode": 1,
+  "versionLabel": "1.0.0",
+  "watchapp": {
+    "watchface": false
+  },
+  "appKeys": {
+    "servo": 0
+  },
+  "resources": {
+    "media": []
+  }
+}
