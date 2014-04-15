@@ -10,6 +10,7 @@ static AppTimer *g_timer;
 static AppSync  gSync;
 static uint8_t  gSyncBuffer[64];
 
+static int g_last_servo_pos = 0;
 
 // -----------------------------------------------------------------------------------------------
 // NOTE: The javascript code references these same constants through the strings
@@ -48,7 +49,7 @@ static void timer_callback(void *data) {
 
   accel_service_peek(&accel);
   snprintf(g_text, sizeof(g_text), "%d %d %d", accel.x, accel.y, accel.z);
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "servo position: %d %d %d", accel.x, accel.y, accel.z);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "accel position: %d %d %d", accel.x, accel.y, accel.z);
 
   text_layer_set_text(g_text_layer, g_text);
   layer_mark_dirty(text_layer_get_layer(g_text_layer));
@@ -60,16 +61,19 @@ static void timer_callback(void *data) {
   } else if (servo_pos > 180) {
     servo_pos = 180;
   }
-  Tuplet value = TupletInteger(SERVO_KEY, servo_pos);
-  DictionaryIterator *iter;
-  app_message_outbox_begin(&iter);
-  if (iter != NULL) {
-    dict_write_tuplet(iter, &value);
-    dict_write_end(iter);
-    app_message_outbox_send();
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Updated server position to: %d", servo_pos);
-  } else {
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Could not write to outbox");
+  if (abs(servo_pos - g_last_servo_pos) > 5) {
+    g_last_servo_pos = servo_pos;
+    Tuplet value = TupletInteger(SERVO_KEY, servo_pos);
+    DictionaryIterator *iter;
+    app_message_outbox_begin(&iter);
+    if (iter != NULL) {
+      dict_write_tuplet(iter, &value);
+      dict_write_end(iter);
+      app_message_outbox_send();
+      APP_LOG(APP_LOG_LEVEL_DEBUG, "Updated server position to: %d", servo_pos);
+    } else {
+      APP_LOG(APP_LOG_LEVEL_DEBUG, "Could not write to outbox");
+    }
   }
 
   g_timer = app_timer_register(330 /* milliseconds */, timer_callback, NULL);
@@ -79,13 +83,6 @@ static void timer_callback(void *data) {
 // -----------------------------------------------------------------------------------------------
 static void sync_error_callback(DictionaryResult dict_error, AppMessageResult app_message_error, void *context) {
   APP_LOG(APP_LOG_LEVEL_DEBUG, "App Message Sync Error: %d", app_message_error);
-}
-
-
-// -----------------------------------------------------------------------------------------------
-static void sync_tuple_changed_callback(const uint32_t key,
-        const Tuple* new_tuple, const Tuple* old_tuple, void* context) {
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "sync_tuple_changed");
 }
 
 
@@ -100,8 +97,9 @@ static void window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
 
-  g_text_layer = text_layer_create((GRect) { .origin = { 0, 72 }, .size = { bounds.size.w, 20 } });
+  g_text_layer = text_layer_create((GRect) { .origin = { 0, 72 }, .size = { bounds.size.w, 60 } });
   text_layer_set_text(g_text_layer, "Press a button");
+  text_layer_set_font(g_text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
   text_layer_set_text_alignment(g_text_layer, GTextAlignmentCenter);
   layer_add_child(window_layer, text_layer_get_layer(g_text_layer));
 }
@@ -128,8 +126,8 @@ static void init(void) {
   g_timer = app_timer_register(100 /* milliseconds */, timer_callback, NULL);
 
   // Init app messages
-  const int inbound_size = 64;
-  const int outbound_size = 64;
+  const int inbound_size = 32;
+  const int outbound_size = 32;
   app_message_open(inbound_size, outbound_size);
   
   Tuplet initialValues[] = {
@@ -137,8 +135,7 @@ static void init(void) {
   };
 
   app_sync_init(&gSync, gSyncBuffer, sizeof(gSyncBuffer), initialValues, 
-              ARRAY_LENGTH(initialValues), sync_tuple_changed_callback, 
-              sync_error_callback, NULL);
+              ARRAY_LENGTH(initialValues), NULL /*changed callback*/, sync_error_callback, NULL /*context*/);
 }
 
 
